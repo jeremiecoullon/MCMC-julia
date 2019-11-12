@@ -13,10 +13,33 @@ mutable struct Chain
     logPostCurrent::Float64
 end
 
-function initializeLogPostCurrent(samples::Chain, logPost)
-    samples.logPostCurrent = logPost(samples.samples[end])
+# =====
+# `getLastSample` and `appendNewSample` deal with 1D and multivariate distributions
+
+function getLastSample(samplesArray::Array{Float64, 2})
+    samplesArray[:, end]
+end
+
+function getLastSample(samplesArray::Array{Float64, 1})
+    samplesArray[end]
+end
+
+
+function appendNewSample(samplesArray::Array{Float64, 2}, xNew::Array{Float64, 1})
+    hcat(samplesArray, xNew)
+end
+
+function appendNewSample(samplesArray::Array{Float64, 1}, xNew::Float64)
+    push!(samplesArray, xNew)
+end
+
+# =====
+
+function initializeLogPostCurrent(samples::Chain, logPost::Function)
+    samples.logPostCurrent = logPost(getLastSample(samples.samples))
     samples
 end
+
 
 function acceptanceRate(samples::Chain)
     a = samples.accept
@@ -34,19 +57,21 @@ function acceptReject(logPostNew::Float64, logPostCurrent::Float64)
     end
 end
 
-function getNextSample(sample::Float64, logPostCurrent::Float64, logPost::Function, proposalDist)
+function getNextSample(sample, logPostCurrent::Float64, logPost::Function, proposalDist)
     xNew = sample + rand(proposalDist)
     logPostNew = logPost(xNew)
     acceptBool = acceptReject(logPostNew, logPostCurrent)
     acceptBool ? (xNew, acceptBool, logPostNew) : (sample, acceptBool, logPostCurrent)
 end
 
-function metropolisHastingsStep(samples::Chain, logPost, proposalDist)
-    xNew, acceptBool, logPostNew = getNextSample(samples.samples[end],
+function metropolisHastingsStep(samples::Chain, logPost::Function, proposalDist)
+    xNew, acceptBool, logPostNew = getNextSample(getLastSample(samples.samples),
                                     samples.logPostCurrent,
                                     logPost,
                                     proposalDist)
-    push!(samples.samples, xNew)
+    # push!(samples.samples, xNew)
+#     samples.samples = hcat(samples.samples, xNew)
+    samples.samples = appendNewSample(samples.samples, xNew)
     if acceptBool
         samples.accept += 1
         samples.logPostCurrent = logPostNew
